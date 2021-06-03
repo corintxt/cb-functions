@@ -25,7 +25,7 @@ def filter_test_users(df):
     return clean_df
 
 def get_demographics(db, start_ts: int, end_ts: int) -> pd.DataFrame:
-    # Get overall demographics for a given time period
+    # Get overall race demographics for a given time period
     # (original query by Micha)
     q = text(
         '''WITH demo_filtered AS (
@@ -48,7 +48,30 @@ def get_demographics(db, start_ts: int, end_ts: int) -> pd.DataFrame:
     return demo.append({'race': 'TOTAL',
                 'count': demo.sum().item()}, 
                 ignore_index=True)
-    
+
+def view_voter_split(db, start_ts: int, end_ts: int) -> pd.DataFrame:
+    # Get voter demographics for a given time period
+    q = text(
+        '''WITH demo_filtered AS (
+                SELECT DISTINCT ON (user_id)
+                    demo.*
+                FROM "facebook-timeline" ft
+                INNER JOIN demographics as demo
+                    ON demo.user_id = ft.user_id
+                WHERE (ft.timestamp < :end)
+                AND (ft.timestamp > :start)
+            )
+                SELECT 
+                    vote_2020 AS vote,
+                    count(*)
+                FROM demo_filtered
+                GROUP BY vote'''
+    )
+
+    vote = pd.read_sql_query(q, con=db.engine, params={"start": start_ts, "end": end_ts})
+    return vote.append({'vote': 'TOTAL',
+                'count': vote.sum().item()}, 
+                ignore_index=True)
     
 
 

@@ -5,8 +5,6 @@ from timeit import default_timer as timer
 from datetime import datetime, timedelta
 from cf_helper_functions import dedup_and_date_format
 
-def is_it_working():
-    print("Yes it is")
 
 ## SEARCH FOR URL DOMAIN
 def search_for_url_domain(db, url: str) -> pd.DataFrame:
@@ -49,7 +47,8 @@ def search_for_url_domain(db, url: str) -> pd.DataFrame:
 
 ## FULL TEXT SEARCH
 # DB query: searches all relevant post fields for a keyword
-def full_text_search(db, keystring: str, start_ts: int, end_ts: int) -> pd.DataFrame:
+def full_text_search(db, start_ts: int, end_ts: int, keywords: str) -> pd.DataFrame:
+    print("Starting full text search...")
     func_start = timer()
     q = text(
     f"""
@@ -79,7 +78,7 @@ def full_text_search(db, keystring: str, start_ts: int, end_ts: int) -> pd.DataF
     """
     )
 
-    res = pd.read_sql_query(q, params={"keywords_str": keystring, "start": start_ts, "end": end_ts}, 
+    res = pd.read_sql_query(q, params={"keywords_str": keywords, "start": start_ts, "end": end_ts}, 
                         con=db.engine)
 
     df_clean = dedup_and_date_format(res)
@@ -317,6 +316,28 @@ def get_posts_in_time_period(db, start_ts, end_ts):
     
     return df_clean
 
+### SIDELINE ADS
+def top_sideline_ads(db, start_ts, end_ts):
+    q = text(
+        '''
+        SELECT
+            fsa.post_text,
+            fsal.url,
+            COUNT (DISTINCT fsa.user_id) as user_count        
+        FROM "facebook-sideline-ads" AS fsa
+        LEFT JOIN "facebook-sideline-ads_attachments:links" fsal
+            ON fsa."attachments:links" = fsal.key    
+        WHERE fsa.timestamp BETWEEN :start AND :end
+        GROUP BY (post_text, url)
+        ORDER BY user_count DESC
+    '''
+    )
+    res = pd.read_sql_query(q, con=db.engine, 
+                        params = {"start": start_ts, "end": end_ts})
+
+    print(f"Returned {len(res)} sideline ads.")
+    return res
+
 
 ### MISINFORMATION + OTHER 
 ## Get all flagged posts
@@ -352,6 +373,7 @@ def get_flagged_posts(db, start_ts, end_ts, filter_covid=False) -> pd.DataFrame:
     if filter_covid:
         res = res[~res.flag.str.contains('covid', case=False).fillna(False)]
     
+    print(f"Returned {len(res)} flagged posts.")
     return res
 
 ### AD TARGETING
