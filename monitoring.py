@@ -1,4 +1,5 @@
 import pandas as pd
+from pandas._libs.tslibs import Timestamp
 from sqlalchemy.sql import text
 from timeit import default_timer as timer
 from datetime import datetime, timedelta
@@ -9,7 +10,6 @@ def is_it_working():
 
 ## SEARCH FOR URL DOMAIN
 def search_for_url_domain(db, url: str) -> pd.DataFrame:
-    # search for RFK link and associated terms
     func_start = timer()
     q = text(
         f'''
@@ -111,6 +111,8 @@ def set_timeframe(n_weeks, wk_offset):
 ## Get a list of the top groups in a timeframe
 # Optionally: that contain a certain keyword(s) - use regex
 def get_top_groups(db, start_ts, end_ts, keywords='.'):
+    print("Starting query...")
+    func_start = timer()
     q = text("""
     SELECT 
         MIN ( groups.group_name) as group_name,
@@ -129,7 +131,6 @@ def get_top_groups(db, start_ts, end_ts, keywords='.'):
     AND groups.group_name ~* :keywords
     GROUP BY groups.group_slug
     ORDER BY n_user_recommend DESC
-    LIMIT 1000
     """)
     df = pd.read_sql_query(sql=q, 
                        params={"start_date": start_ts, "end_date": end_ts, "keywords": keywords},
@@ -138,6 +139,12 @@ def get_top_groups(db, start_ts, end_ts, keywords='.'):
     df['first_sighted'] = pd.to_datetime(df['first_sighted'], unit='s').apply(lambda x: x.date())
     df['last_sighted'] = pd.to_datetime(df['last_sighted'], unit='s').apply(lambda x: x.date())
     
+    func_end = timer()
+    func_time = func_end - func_start
+
+    print(f'Identified {len(df)} groups, completed in {round(func_time, 2)} seconds.')
+
+
     return df
 
 ### POLITICAL ADS ##
@@ -182,6 +189,7 @@ def get_political_ads(db, start_ts, end_ts, keywords='.'):
                           )
     df = dedup_and_date_format(df)
     df.drop('timestamp', axis=1, inplace=True)
+    print(f"Found {len(df)} ads")
     
     return df
 
@@ -213,7 +221,7 @@ def get_top_posts(db, start_ts, end_ts, keywords='.', is_sponsored=False, vote=N
         AND ft.is_sponsored = :is_sponsored
         AND ft.post_text ~* :keywords
         {vote_switch}AND demo.vote_2020 = :vote 
-        GROUP BY ft.poster, ft.post_text, ftl.url, image_alts
+        GROUP BY ft.poster, ft.post_text, ftl.url, image_alt
         ORDER BY count DESC
         LIMIT 1000
         '''
@@ -263,7 +271,7 @@ def get_top_posters(db, start_ts, end_ts, keywords='.', is_sponsored=False, vote
 
 ### TOP POSTS AND POSTERS:
 ## Call both of the above functions + return dict of 2 dataframes
-def get_top_posts_and_posters(db, start_ts, end_ts, keywords='.', is_sponsored=False, vote=None):
+def get_top_posts_and_posters(db, start_ts: int, end_ts: int, keywords='.', is_sponsored=False, vote=None) -> dict:
     res = dict()    
     res['description'] = {"keywords": keywords, "is_sponsored": is_sponsored, "vote": vote}
     res['top_posters'] = get_top_posters(db, start_ts, end_ts, keywords=keywords, is_sponsored=is_sponsored, vote=vote)
@@ -314,7 +322,7 @@ def get_posts_in_time_period(db, start_ts, end_ts):
 ## Get all flagged posts
 # Option: filter out Covid-related flags which are the most common
 # leaving mostly misinformation and graphic content
-def get_flagged_posts(db, start_ts, end_ts, filter_covid=False):
+def get_flagged_posts(db, start_ts, end_ts, filter_covid=False) -> pd.DataFrame:
     q = text(
         '''
         SELECT DISTINCT ON (ft.poster, ft.post_text, ft.user_id, ft.timestamp)
@@ -348,7 +356,7 @@ def get_flagged_posts(db, start_ts, end_ts, filter_covid=False):
 
 ### AD TARGETING
 ## Get most-used ad interests in a time bracket, by poster
-def get_ad_interests_ranked(db, start_ts, end_ts):
+def get_ad_interests_ranked(db, start_ts, end_ts) -> pd.DataFrame:
     q = text(
         '''
         SELECT

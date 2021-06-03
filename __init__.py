@@ -14,6 +14,8 @@ def dedup_and_date_format(df):
                                 ], inplace=True)
     
     ts_to_date(df)
+    df = df.reset_index()
+    df.drop('index', axis=1, inplace=True)
     return df
 
 
