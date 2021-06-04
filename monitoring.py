@@ -192,6 +192,50 @@ def get_political_ads(db, start_ts, end_ts, keywords='.'):
     
     return df
 
+## MOST COMMONLY SEEN URLs AND DOMAINS
+# Get top URLs in a timeframe - use group_domains argument to aggregate by domain
+def find_top_urls(db, start_ts, end_ts, is_sponsored=False, group_domains=False):
+    print("Getting top domains. Run time approx 3 mins per week of data.")
+    func_start = timer()
+    
+    # Switch between grouping by individual url and grouping by url domain
+    if group_domains:
+        select_url = 'ftl.url_domain'
+        group_domains = 'url_domain'
+    else:
+        select_url = 'ftl.url'
+        group_domains = 'url'
+    
+    q = text(
+        f'''
+        SELECT 
+            COUNT(DISTINCT ft.user_id),
+            {select_url}
+        FROM "facebook-timeline" ft
+        JOIN "facebook-timeline_attachments:links" ftl
+            ON ft."attachments:links" = ftl.key
+        JOIN "demographics" demo
+            ON ft.user_id = demo.user_id
+        WHERE ft.timestamp BETWEEN :start AND :end
+        AND ft.is_facebook = False
+        AND ft.is_sponsored = :is_sponsored
+        GROUP BY {group_domains}
+        ORDER BY count DESC
+        LIMIT 1000
+        '''
+        )
+    
+    res = pd.read_sql_query(q, con=db.engine, 
+                            params = {"start": start_ts, "end": end_ts, 
+                                      "is_sponsored": is_sponsored})
+    func_end = timer()
+    func_time = func_end - func_start
+
+    print(f'Completed in {round(func_time, 2)} seconds.')
+    
+    return res
+
+
 ## TOP SPONSORED + NON-SPONSORED POSTS
 ## Get top posts in a timeframe
 # Optionally: served to users who voted in a certain way
